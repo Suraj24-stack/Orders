@@ -3,14 +3,23 @@ import os
 import random
 from datetime import datetime, timedelta
 import psycopg2
+from dotenv import load_dotenv
 
-DB_CONFIG = {
-    "host": os.getenv("POSTGRES_HOST", "postgres"),
-    "port": os.getenv("POSTGRES_PORT", "5432"),
-    "user": os.getenv("POSTGRES_USER", "orders_user"),
-    "password": os.getenv("POSTGRES_PASSWORD", "orders_pass"),
-    "dbname": os.getenv("POSTGRES_DB", "ordersdb"),
-}
+load_dotenv()
+
+
+def get_conn():
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url:
+        return psycopg2.connect(db_url)
+    return psycopg2.connect(
+        host=os.environ.get("POSTGRES_HOST", "localhost"),
+        port=os.environ.get("POSTGRES_PORT", "5432"),
+        user=os.environ.get("POSTGRES_USER", "admin"),
+        password=os.environ.get("POSTGRES_PASSWORD", "secret"),
+        dbname=os.environ.get("POSTGRES_DB", "ordersdb"),
+    )
+
 
 CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS orders (
@@ -32,16 +41,11 @@ STATUSES = ["pending", "completed", "cancelled", "expired"]
 
 
 def seed(num_rows=25):
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = get_conn()
     cur = conn.cursor()
-
-    # Create table only if it doesn't exist
     cur.execute(CREATE_TABLE)
-
-    # Wipe old data so we always seed a clean batch
     cur.execute("TRUNCATE TABLE orders RESTART IDENTITY;")
 
-    # Build sample rows
     rows = []
     for i in range(1, num_rows + 1):
         customer = random.choice(CUSTOMERS)
@@ -62,7 +66,6 @@ def seed(num_rows=25):
     cur.execute("SELECT COUNT(*) FROM orders;")
     count = cur.fetchone()[0]
     print(f"✅ Seeded {count} orders successfully.")
-
     cur.close()
     conn.close()
 

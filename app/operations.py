@@ -1,6 +1,6 @@
+"""Data cleaning operations: export, update, delete, group counts."""
 import os
 import csv
-from datetime import datetime
 import psycopg2
 from dotenv import load_dotenv
 
@@ -8,11 +8,26 @@ load_dotenv()
 
 EXPORT_PATH = "/exports/pending_orders.csv"
 
-def get_conn():
-    return psycopg2.connect(os.environ["DATABASE_URL"])
 
-def export_pending_to_csv(path=EXPORT_PATH):
-    conn = get_conn()
+def get_conn():
+    """Get a database connection. Prefers DATABASE_URL, falls back to individual vars."""
+    db_url = os.environ.get("DATABASE_URL")
+    if db_url:
+        return psycopg2.connect(db_url)
+    # Fallback for environments that set individual vars
+    return psycopg2.connect(
+        host=os.environ.get("POSTGRES_HOST", "localhost"),
+        port=os.environ.get("POSTGRES_PORT", "5432"),
+        user=os.environ.get("POSTGRES_USER", "admin"),
+        password=os.environ.get("POSTGRES_PASSWORD", "secret"),
+        dbname=os.environ.get("POSTGRES_DB", "ordersdb"),
+    )
+
+
+def export_pending_to_csv(path=EXPORT_PATH, conn=None):
+    own_conn = conn is None
+    if own_conn:
+        conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
         SELECT id, customer_name, order_ref, amount, status, created_at
@@ -28,29 +43,37 @@ def export_pending_to_csv(path=EXPORT_PATH):
         writer.writerow(headers)
         writer.writerows(rows)
     cur.close()
-    conn.close()
+    if own_conn:
+        conn.close()
     print(f" Exported {len(rows)} pending orders → {path}")
     return rows
 
-def expire_old_pending_orders():
-    conn = get_conn()
+
+def expire_old_pending_orders(days=30, conn=None):
+    own_conn = conn is None
+    if own_conn:
+        conn = get_conn()
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(f"""
         UPDATE orders
         SET status = 'expired'
         WHERE status = 'pending'
-          AND created_at < NOW() - INTERVAL '30 days'
+          AND created_at < NOW() - INTERVAL '{days} days'
         RETURNING id, order_ref, created_at;
     """)
     updated = cur.fetchall()
     conn.commit()
     cur.close()
-    conn.close()
+    if own_conn:
+        conn.close()
     print(f" Expired {len(updated)} old pending orders.")
     return updated
 
-def delete_cancelled_orders():
-    conn = get_conn()
+
+def delete_cancelled_orders(conn=None):
+    own_conn = conn is None
+    if own_conn:
+        conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
         DELETE FROM orders
@@ -60,12 +83,16 @@ def delete_cancelled_orders():
     deleted = cur.fetchall()
     conn.commit()
     cur.close()
-    conn.close()
+    if own_conn:
+        conn.close()
     print(f" Deleted {len(deleted)} cancelled orders.")
     return deleted
 
-def show_status_counts():
-    conn = get_conn()
+
+def show_status_counts(conn=None):
+    own_conn = conn is None
+    if own_conn:
+        conn = get_conn()
     cur = conn.cursor()
     cur.execute("""
         SELECT status, COUNT(*) AS total
@@ -75,13 +102,19 @@ def show_status_counts():
     """)
     rows = cur.fetchall()
     cur.close()
-    conn.close()
+    if own_conn:
+        conn.close()
     print("\n Orders by Status:")
     print(f"  {'Status':<12} {'Count':>6}")
     print("  " + "-" * 20)
     for status, count in rows:
         print(f"  {status:<12} {count:>6}")
     return rows
+
+
+# Backward compatibility alias for tests that use the old name
+export_pending_orders = export_pending_to_csv
+
 
 if __name__ == "__main__":
     print("\n=== Step 1: Export pending orders ===")

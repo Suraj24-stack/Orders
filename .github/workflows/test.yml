@@ -17,23 +17,19 @@ jobs:
       postgres:
         image: postgres:16-alpine
         env:
-          POSTGRES_USER: orders_user
-          POSTGRES_PASSWORD: orders_pass
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: secret
           POSTGRES_DB: ordersdb
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U orders_user -d ordersdb"
+          --health-cmd "pg_isready -U admin -d ordersdb"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
 
     env:
-      POSTGRES_HOST: localhost
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: orders_user
-      POSTGRES_PASSWORD: orders_pass
-      POSTGRES_DB: ordersdb
+      DATABASE_URL: postgresql://admin:secret@localhost:5432/ordersdb
 
     steps:
       - name: Checkout code
